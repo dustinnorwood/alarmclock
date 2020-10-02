@@ -13,7 +13,7 @@ synopsis:            Wake up and perform an action at a certain time.
 description:         Please see the README on Bitbucket at <https://bitbucket.org/davecturner/alarmclock#readme>
 
 dependencies:
-- base >=4.8 && <4.12
+- base >=4.8 && <4.13
 - stm
 - async
 - time
