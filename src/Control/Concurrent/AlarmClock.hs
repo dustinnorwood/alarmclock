@@ -81,13 +81,22 @@ newAlarmClock'
     -- it to go off again.
   -> IO (AlarmClock t)
 newAlarmClock' onWakeUp = mfix $ \ac -> do
+  putStrLn "newAlarmClock' beginning"
   acAsync <- async $ runAlarmClock ac (onWakeUp ac)
-  AlarmClock (wait acAsync) <$> newTVarIO AlarmNotSet
+  putStrLn "newAlarmClock' middle"
+  ac' <- AlarmClock (wait acAsync) <$> newTVarIO AlarmNotSet
+  putStrLn "newAlarmClock' end"
+  pure ac'
 
 {-| Destroy the 'AlarmClock' so no further alarms will occur. If the alarm is currently going off
 then this will block until the action is finished. -}
 destroyAlarmClock :: AlarmClock t -> IO ()
-destroyAlarmClock AlarmClock{..} = atomically (writeTVar acNewSetting AlarmDestroyed) >> acWaitForExit
+destroyAlarmClock AlarmClock{..} = do
+  putStrLn "destroyAlarmClock beginning"
+  atomically (writeTVar acNewSetting AlarmDestroyed)
+  putStrLn "destroyAlarmClock middle"
+  acWaitForExit
+  putStrLn "destroyAlarmClock end"
 
 {-| The action @withAlarmClock onWakeUp inner@ runs @inner@ with a new 'AlarmClock' which
 is destroyed when @inner@ exits. -}
@@ -131,19 +140,24 @@ runAlarmClock :: TimeScale t => AlarmClock t -> (t -> IO ()) -> IO ()
 runAlarmClock AlarmClock{..} wakeUpAction = labelMyThread "alarmclock" >> loop
   where
   loop :: IO ()
-  loop = join $ atomically whenNotSet
+  loop = do
+    putStrLn "loop"
+    join $ atomically whenNotSet
 
   whenNotSet :: STM (IO ())
   whenNotSet = readTVar acNewSetting >>= \case
     AlarmNotSet         -> retry
-    AlarmDestroyed      -> return $ return ()
-    AlarmSet wakeUpTime -> return $ whenSet wakeUpTime
+    AlarmDestroyed      -> return $ putStrLn "whenNotSet: AlarmDestroyed" >> return ()
+    AlarmSet wakeUpTime -> return $ putStrLn "whenNotSet: AlarmSet" >> whenSet wakeUpTime
 
   whenSet wakeUpTime = do
+    putStrLn $ "whenSet: beginning"
     now <- getAbsoluteTime
     let microsecondsTimeout = microsecondsDiff wakeUpTime now
     if 0 < microsecondsTimeout
-      then join $ withAsync (delay microsecondsTimeout) $ \a -> atomically $
+      then do
+        putStrLn $ "whenSet: not ready for another " ++ show microsecondsTimeout
+        join $ withAsync (delay microsecondsTimeout) $ \a -> atomically $
                       (waitSTM a >> return (whenSet wakeUpTime))
                     `orElse`
                       (readTVar acNewSetting >>= \case
@@ -151,10 +165,15 @@ runAlarmClock AlarmClock{..} wakeUpAction = labelMyThread "alarmclock" >> loop
                           AlarmDestroyed                                                        -> return $ return ()
                           _                                                                     -> retry
                       )
+        putStrLn $ "whenSet: done joining"
 
       else do
+        putStrLn $ "whenSet: ready!"
         atomically $ modifyTVar' acNewSetting $ \case
           AlarmSet _ -> AlarmNotSet
           setting    -> setting
+        putStrLn $ "whenSet: running wakeUpAction!"
         wakeUpAction now
+        putStrLn $ "whenSet: done running wakeUpAction!"
         loop
+        putStrLn $ "whenSet: done looping!"
