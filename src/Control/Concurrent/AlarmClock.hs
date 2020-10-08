@@ -162,7 +162,7 @@ runAlarmClock AlarmClock{..} wakeUpAction = labelMyThread "alarmclock" >> loop
                     `orElse`
                       (readTVar acNewSetting >>= \case
                           AlarmSet wakeUpTime' | earlierOf wakeUpTime' wakeUpTime /= wakeUpTime -> return $ whenSet wakeUpTime'
-                          AlarmDestroyed                                                        -> return $ return ()
+                          AlarmDestroyed                                                        -> return $ getAbsoluteTime >>= whenSet
                           _                                                                     -> retry
                       )
         putStrLn $ "whenSet: done joining"
